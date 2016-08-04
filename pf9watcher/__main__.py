@@ -57,9 +57,13 @@ def watcher():
 							# print down.servers
 							for server in down.servers:
 								# print server
-								resp = nova.servers.evacuate( server['name'], host=None, on_shared_storage=True )
-								logging.info( 'evacuating server: %s from host: %s', server['uuid'], down.hypervisor_hostname )
-								print "evacuating server: %s from host: %s" %( server['uuid'], down.hypervisor_hostname )
+								try:
+									resp = nova.servers.evacuate( server['name'], host=None, on_shared_storage=True )
+									logging.info( 'evacuating server: %s from host: %s', server['uuid'], down.hypervisor_hostname )
+									print "evacuating server: %s from host: %s" %( server['uuid'], down.hypervisor_hostname )
+								except Exception,e:
+									logging.error( 'error evacuating server: %s from host: %s', server['uuid'], down.hypervisor_hostname )
+									logging.error( str(e) )
 						else: logging.warning( '%s: at least im not running any servers' , hypervisor.hypervisor_hostname )
 				else:
 					logging.info( '%s: alls good in the hood b', hypervisor.hypervisor_hostname )
