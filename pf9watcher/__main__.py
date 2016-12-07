@@ -34,39 +34,73 @@ def watcher():
 			
 			keystoneversion = 2
 			novaversion = 2
+			try:
+				auth = v2.Password( auth_url=sessionInfo['identityApiEndpoint'], username=sessionInfo['osUsername'], password=sessionInfo['osPassword'], tenant_name=sessionInfo['osTenant'] )
+				sess = session.Session( auth=auth )
+				keystone = ksclient.Client(session=sess)
+			except Exception,e:
+				logging.error( 'error creating keystone session' )
+				logging.error( str(e) )
+			
+			try:
+				nova = nclient.Client( novaversion, session=sess, region_name=sessionInfo['osRegion'], connection_pool=True )
+			except Exception,e:
+				logging.error( 'error creating nova session' )
+				logging.error( str(e) )
 
-			auth = v2.Password( auth_url=sessionInfo['identityApiEndpoint'], username=sessionInfo['osUsername'], password=sessionInfo['osPassword'], tenant_name=sessionInfo['osTenant'] )
-			sess = session.Session( auth=auth )
+			try:
+				h_list = nova.hypervisors.list( detailed=True )
+			except Exception,e:
+				logging.error( 'error getting hypervisor list from nova' )
+				logging.error( str(e) )
 
-			keystone = ksclient.Client(session=sess)
-
-			nova = nclient.Client( novaversion, session=sess, region_name=sessionInfo['osRegion'], connection_pool=True )
-
-			h_list = nova.hypervisors.list( detailed=True )
-			# print h_list
-
-			for hypervisor in h_list:
-				if hypervisor.state == "down":
-					# print "here"
-					print hypervisor.hypervisor_hostname  
-					# print hypervisor.state
-					down_list = nova.hypervisors.search( hypervisor.hypervisor_hostname, servers=True )
-					for down in down_list:
-						logging.error( '%s: oh no im in trouble' , hypervisor.hypervisor_hostname )
-						if hasattr( down, 'servers' ):
-							# print down.servers
-							for server in down.servers:
-								# print server
+			try:
+				for hypervisor in h_list:
+					if hypervisor.state == "down":
+						# print "here"
+						print hypervisor.hypervisor_hostname  
+						# print hypervisor.state
+						down_list = nova.hypervisors.search( hypervisor.hypervisor_hostname, servers=True )
+						for down in down_list:
+							logging.error( '%s: oh no im in trouble' , hypervisor.hypervisor_hostname )
+							if hasattr( down, 'servers' ):
+								# print down.servers
+								for server in down.servers:
+									# print server
+									try:
+										resp = nova.servers.evacuate( server['name'], host=None, on_shared_storage=True )
+										logging.info( 'evacuating server: %s from host: %s', server['uuid'], down.hypervisor_hostname )
+										print "evacuating server: %s from host: %s" %( server['uuid'], down.hypervisor_hostname )
+									except Exception,e:
+										logging.error( 'error evacuating server: %s from host: %s', server['uuid'], down.hypervisor_hostname )
+										logging.error( str(e) )
+								time.sleep(60)
 								try:
-									resp = nova.servers.evacuate( server['name'], host=None, on_shared_storage=True )
-									logging.info( 'evacuating server: %s from host: %s', server['uuid'], down.hypervisor_hostname )
-									print "evacuating server: %s from host: %s" %( server['uuid'], down.hypervisor_hostname )
-								except Exception,e:
-									logging.error( 'error evacuating server: %s from host: %s', server['uuid'], down.hypervisor_hostname )
-									logging.error( str(e) )
-						else: logging.warning( '%s: at least im not running any servers' , hypervisor.hypervisor_hostname )
-				else:
-					logging.info( '%s: alls good in the hood b', hypervisor.hypervisor_hostname )
+									for server in down.servers:
+										result = None
+										timeout = 0
+										while result is None:
+											if timeout < 10:
+												try:
+													result = nova.servers.start( server['name'] )
+												except Exception,e:
+													timeout = timeout + 1
+													logging.error( 'error restarting server: %s', server['uuid'] )
+													logging.error( str(e) )
+													time.sleep(5)
+													pass
+											else:
+												result = 'break'
+												logging.error( 'error could not restart server: %s', server['uuid'] )
+								except:
+										logging.error ( 'error looping through server list' )
+										logging.error( str(e) )
+							else: logging.warning( '%s: at least im not running any servers' , hypervisor.hypervisor_hostname )
+					else:
+						logging.info( '%s: alls good in the hood b', hypervisor.hypervisor_hostname )
+			except Exception,e:
+				logging.error( 'error looping through hypervisor list' )
+				logging.error( str(e) )			
 		else:
 			logging.error('missing properties file')
 		return
