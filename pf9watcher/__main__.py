@@ -30,6 +30,7 @@ def watcher():
 			# Load the decrypted properties into sessionInfo
 			sessionInfo = json.loads(decryptedProperties['string'])
 
+			logging.info( 'decrypted session data: %s', sessionInfo )
 			logging.info('checking hypervisor status')
 			
 			keystoneversion = 2
@@ -123,22 +124,27 @@ def watcher():
 					# The next block of code asks for all of the info we need to run this script
 					if sys.argv[2] is not None:
 						sessionInfo['identityApiEndpoint'] = sys.argv[2]
+						logging.info( 'keystone endpoint: %s', sys.argv[2] )
 					else:
 						sessionInfo['identityApiEndpoint'] = raw_input( 'Keystone API URL:  ' )
 					if sys.argv[3] is not None:
 						sessionInfo['osUsername'] = sys.argv[3]
+						logging.info( 'username: %s', sys.argv[3] )
 					else:
 						sessionInfo['osUsername'] = raw_input( 'OpenStack Username:  ' )
 					if sys.argv[4] is not None:
 						sessionInfo['osPassword'] = sys.argv[4]
+						logging.info( 'password: %s', sys.argv[4] )
 					else:
 						sessionInfo['osPassword'] = getpass.getpass( 'OpenStack Password:  ' )
 					if sys.argv[5] is not None:
 						sessionInfo['osTenant'] = sys.argv[5]
+						logging.info( 'tenant: %s', sys.argv[5] )
 					else:
 						sessionInfo['osTenant'] = raw_input( 'OpenStack Tenant:  ' )
 					if sys.argv[6] is not None:
 						sessionInfo['osRegion'] = sys.argv[6]
+						logging.info( 'region: %s', sys.argv[6] )
 					else:
 						sessionInfo['osRegion'] = raw_input( 'OpenStack Region:  ' )
 					# Convert the properties to a json string and encrypt them
