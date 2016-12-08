@@ -30,7 +30,7 @@ def watcher():
 			# Load the decrypted properties into sessionInfo
 			sessionInfo = json.loads(decryptedProperties['string'])
 
-			logging.info( 'decrypted session data: %s', sessionInfo )
+			# logging.info( 'decrypted session data: %s', sessionInfo )
 			logging.info('checking hypervisor status')
 			
 			keystoneversion = 2
@@ -134,7 +134,7 @@ def watcher():
 						sessionInfo['osUsername'] = raw_input( 'OpenStack Username:  ' )
 					if sys.argv[4] is not None:
 						sessionInfo['osPassword'] = sys.argv[4]
-						logging.info( 'password: %s', sys.argv[4] )
+						# logging.info( 'password: %s', sys.argv[4] )
 					else:
 						sessionInfo['osPassword'] = getpass.getpass( 'OpenStack Password:  ' )
 					if sys.argv[5] is not None:
