@@ -114,19 +114,33 @@ def watcher():
 
 	if __name__ == "__main__":
 		daemon = PF9WatcherDaemon('/tmp/pf9-watcher.pid')
-		if len(sys.argv) == 2:
+		if len(sys.argv) >= 2:
 			if 'start' == sys.argv[1]:
 				# If the encrypted properties file doesn't exist, build the file
 				if not (os.path.isfile(propertiesFile)):
 					# Build a new object to store session information
 					sessionInfo = {}
 					# The next block of code asks for all of the info we need to run this script
-					sessionInfo['identityApiEndpoint'] = raw_input( 'Keystone API URL:  ' ) 
-					sessionInfo['osUsername'] = raw_input( 'OpenStack Username:  ' )
-					sessionInfo['osPassword'] = getpass.getpass( 'OpenStack Password:  ' )
-					sessionInfo['osTenant'] = raw_input( 'OpenStack Tenant:  ' )
-					sessionInfo['osRegion'] = raw_input( 'OpenStack Region:  ' )
-					
+					if sys.argv[2] is not None:
+						sessionInfo['identityApiEndpoint'] = sys.argv[2]
+					else:
+						sessionInfo['identityApiEndpoint'] = raw_input( 'Keystone API URL:  ' )
+					if sys.argv[3] is not None:
+						sessionInfo['osUsername'] = sys.argv[3]
+					else:
+						sessionInfo['osUsername'] = raw_input( 'OpenStack Username:  ' )
+					if sys.argv[4] is not None:
+						sessionInfo['osPassword'] = sys.argv[4]
+					else:
+						sessionInfo['osPassword'] = getpass.getpass( 'OpenStack Password:  ' )
+					if sys.argv[5] is not None:
+						sessionInfo['osTenant'] = sys.argv[5]
+					else:
+						sessionInfo['osTenant'] = raw_input( 'OpenStack Tenant:  ' )
+					if sys.argv[6] is not None:
+						sessionInfo['osRegion'] = sys.argv[6]
+					else:
+						sessionInfo['osRegion'] = raw_input( 'OpenStack Region:  ' )
 					# Convert the properties to a json string and encrypt them
 					encryptProperties = crypto.crypt(str(json.dumps(sessionInfo)), 'encrypt', '') 
 					# Open the file we will store the encrypted properties in
