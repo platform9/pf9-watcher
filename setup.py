@@ -12,5 +12,5 @@ setup(name='pf9watcher',
           'pycrypto',
           'python-keystoneclient',
           'python-novaclient',
-      ],      
+      ],
       zip_safe=False)
