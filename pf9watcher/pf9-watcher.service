@@ -1,0 +1,10 @@
+[Unit]
+Description=pf9-watcher service
+After=multi-user.target
+
+[Service]
+Type=idle
+ExecStart=/usr/bin/python /opt/pf9/pf9-watcher/pf9watcher/watcher.py
+
+[Install]
+WantedBy=multi-user.target
