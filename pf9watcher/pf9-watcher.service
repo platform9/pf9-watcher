@@ -3,6 +3,8 @@ Description=pf9-watcher service
 After=multi-user.target
 
 [Service]
+User=pf9
+Group=pf9group
 Type=idle
 ExecStart=/usr/bin/python /opt/pf9/pf9-watcher/pf9watcher/watcher.py
 
