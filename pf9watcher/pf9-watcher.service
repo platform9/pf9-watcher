@@ -7,7 +7,6 @@ User=pf9
 Group=pf9group
 Type=idle
 ExecStart=/usr/bin/python /opt/pf9/pf9-watcher/pf9watcher/watcher.py
-ExecStop=/usr/bin/python
 
 [Install]
 WantedBy=multi-user.target

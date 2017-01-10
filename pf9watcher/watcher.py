@@ -32,9 +32,8 @@ def watcher():
             level=logging.INFO)
         logging.info('starting pf9-watcher')
 
-    while True:
-        body(properties_file)
-        time.sleep(60)
+    body(properties_file)
+    time.sleep(60)
 
 def body(properties_file):
     if os.path.isfile(properties_file):
