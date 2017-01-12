@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import datetime
 import os
 import time
 import logging
@@ -8,39 +9,89 @@ import json
 
 # This is actually crypto.py that must be in the same directory as this script.
 import crypto
+from oslo_utils import timeutils
 from keystoneauth1.identity import v2
 from keystoneauth1 import session
-from keystoneclient.v2_0 import client as ksclient
+import novaclient
 from novaclient import client as nclient
 
-def watcher():
-    # The location where we will store the encrypted properties
-    properties_file = '/opt/pf9/pf9-watcher/pf9watcher/encryptedProperties.pkl'
-    logpath = '/var/log/pf9'
-    logfile = '/var/log/pf9/pf9-watcher.log'
-    if not os.path.exists(logpath):
-        os.makedirs(logpath)
-        logging.basicConfig(
-            filename=logfile,
-            format='%(asctime)s %(levelname)s:%(message)s',
-            level=logging.INFO)
-        logging.info('starting pf9-watcher')
-    else:
-        logging.basicConfig(
-            filename=logfile,
-            format='%(asctime)s %(levelname)s:%(message)s',
-            level=logging.INFO)
-        logging.info('starting pf9-watcher')
 
-    body(properties_file)
-    time.sleep(60)
+class Watcher(object):
+    """Ensure VM high availability across OpenStack hypervisors.
 
-def body(properties_file):
-    if os.path.isfile(properties_file):
+    Monitors the OpenStack Nova service on hypervisors, detects compute
+    failures, and reschedules placement of affected VMs on remaining compute
+    nodes.
+    """
+
+    def __init__(self, properties_file, logfile, logpath=''):
+        """Construct a new 'Watcher' object."""
+        super(Watcher, self).__init__()
+
+        self.logfile = logfile
+        self.logpath = logpath
+        self.active_migration_states = frozenset([
+            'accepted',
+            'migrating',
+            'pre-migrating',
+            'running'
+        ])
+
+        self.completed_migration_states = frozenset([
+            'completed',
+            'done',
+            'finished'
+        ])
+
+        try:
+            properties = self.read_properties(properties_file)
+        except IOError as exp:
+            logging.error(exp)
+            raise exp
+
+        # Setup logging
+        self.initialize_logging()
+
+        try:
+            auth = v2.Password(
+                auth_url=properties['identityApiEndpoint'],
+                username=properties['osUsername'],
+                password=properties['osPassword'],
+                tenant_name=properties['osTenant'])
+            sess = session.Session(auth=auth)
+        except Exception as exp:
+            logging.error('Failure creating Keystone API client.')
+            logging.error(str(exp))
+
+        # Build Nova client
+        try:
+            self.nova = nclient.Client(
+                2,
+                session=sess,
+                region_name=properties['osRegion'])
+        except Exception as exp:
+            logging.error('Failure creating Nova API client.')
+            logging.error(str(exp))
+
+    @staticmethod
+    def read_properties(properties_file):
+        """Read encrypted properties file.
+
+        :param properties_file: Encrypted pickled file containing auth info
+        :type properties_file: str
+        :returns: Decrypted properties
+        :rtype: dict
+        """
+        if not os.path.isfile(properties_file):
+            raise Exception(
+                'Unable to read properties file %s' % properties_file
+            )
+
         # Open the file we stored the encrypted properties in
         with open(properties_file, 'rb') as p_file:
             # Retrieve Encrypted Properties
             encrypted_properties = pickle.load(p_file)
+
         # Decrypt the encrypted properties
         decrypted_properties = crypto.crypt(
             encrypted_properties['string'],
@@ -48,114 +99,204 @@ def body(properties_file):
             encrypted_properties['secret'])
 
         # Load the decrypted properties into session_info
-        session_info = json.loads(decrypted_properties['string'])
+        return json.loads(decrypted_properties['string'])
 
-        # logging.info( 'decrypted session data: %s', session_info )
-        logging.info('checking hypervisor status')
+    def run(self):
+        """Run Watcher program."""
+        logging.info('Starting pf9-watcher.')
 
-        # keystoneversion = 2
-        novaversion = 2
-        try:
-            auth = v2.Password(
-                auth_url=session_info['identityApiEndpoint'],
-                username=session_info['osUsername'],
-                password=session_info['osPassword'],
-                tenant_name=session_info['osTenant'])
-            sess = session.Session(auth=auth)
-            keystone = ksclient.Client(session=sess)
-        except Exception, e:
-            logging.error('error creating keystone session')
-            logging.error(str(e))
+        while True:
+            logging.debug('Checking hypervisor status.')
 
-        try:
-            nova = nclient.Client(
-                novaversion,
-                session=sess,
-                region_name=session_info['osRegion'],
-                connection_pool=True)
-        except Exception, e:
-            logging.error('error creating nova session')
-            logging.error(str(e))
+            down_hypervisors = self.get_down_hypervisors()
 
-        try:
-            h_list = nova.hypervisors.list(detailed=True)
-        except Exception, e:
-            logging.error('error getting hypervisor list from nova')
-            logging.error(str(e))
+            for hypervisor in down_hypervisors:
+                hv_info = self.get_hypervisor_servers(
+                    hypervisor_id=hypervisor.id,
+                    hostname=hypervisor.hypervisor_hostname
+                )
 
-        try:
-            for hypervisor in h_list:
-                if hypervisor.state == "down":
-                    # print "here"
-                    print hypervisor.hypervisor_hostname
-                    # print hypervisor.state
-                    down_list = nova.hypervisors.search(
-                        hypervisor.hypervisor_hostname,
-                        servers=True)
-                    for down in down_list:
-                        logging.error('%s: oh no im in trouble', hypervisor.hypervisor_hostname)
-                        if hasattr(down, 'servers'):
-                            # print down.servers
-                            for server in down.servers:
-                                # print server
-                                try:
-                                    resp = nova.servers.evacuate(
-                                        server['name'],
-                                        host=None,
-                                        on_shared_storage=True
-                                    )
-                                    logging.info(
-                                        'evacuating server: %s from host: %s',
-                                        server['uuid'],
-                                        down.hypervisor_hostname
-                                    )
-                                    print "evacuating server: %s from host: %s" \
-                                          % (server['uuid'], down.hypervisor_hostname)
-                                except Exception, e:
-                                    logging.error(
-                                        'error evacuating server: %s from host: %s',
-                                        server['uuid'],
-                                        down.hypervisor_hostname
-                                    )
-                                    logging.error(str(e))
-                            time.sleep(60)
-                            try:
-                                for server in down.servers:
-                                    result = None
-                                    timeout = 0
-                                    while result is None:
-                                        if timeout < 10:
-                                            try:
-                                                result = nova.servers.start(server['name'])
-                                            except Exception, e:
-                                                timeout = timeout + 1
-                                                logging.error('error restarting server: %s', server['uuid'])
-                                                logging.error(str(e))
-                                                time.sleep(5)
-                                                pass
-                                        else:
-                                            result = 'break'
-                                            logging.error(
-                                                'error could not restart server: %s',
-                                                server['uuid'])
-                            except Exception as e:
-                                logging.error(
-                                    'error looping through server list')
-                                logging.error(str(e))
-                        else:
-                            logging.warning(
-                                '%s: at least im not running any servers',
-                                hypervisor.hypervisor_hostname)
-                else:
-                    logging.info(
-                        '%s: alls good in the hood b',
-                        hypervisor.hypervisor_hostname
+                # Skip processing if hypervisor is not running any servers
+                if not hasattr(hv_info, 'servers') or \
+                   not hasattr(hv_info, 'service'):
+                    continue
+
+                # Evacuate VMs from hypervisor
+                evacuation_time = timeutils.utcnow(with_timezone=True) \
+                    .replace(microsecond=0)
+                self.evacuate_hypervisor(hv_info)
+                time.sleep(5)
+
+                # List of servers to migrate from hypervisor
+                migrating_servers = set([s['uuid'] for s in hv_info.servers])
+                retries = 0
+                max_retries = 10
+                while migrating_servers and retries <= max_retries:
+
+                    migrations = self.get_hypervisor_migrations(
+                        hypervisor=hypervisor.service['host'],
+                        after=evacuation_time
                     )
-        except Exception, e:
-            logging.error('error looping through hypervisor list')
-            logging.error(str(e))
-    else:
-        logging.error('missing properties file')
-    return
 
-watcher()
+                    # Retain list of actively migrating VMs
+                    actively_migrating = False
+                    for migration in migrations:
+                        if migration.status in self.active_migration_states:
+                            actively_migrating = True
+
+                        # If migration is complete
+                        if (migration.instance_uuid in migrating_servers) and \
+                            (migration.status in
+                             self.completed_migration_states):
+                            try:
+                                self.nova.servers.start(
+                                    migration.instance_uuid)
+                            except Exception as exp:
+                                logging.error(exp)
+                            else:
+                                migrating_servers.remove(
+                                    migration.instance_uuid)
+
+                    if actively_migrating:
+                        retries += 1
+                        time.sleep(10)
+                    else:
+                        # Break out of while loop
+                        break
+
+                if migrating_servers:
+                    error_msg = 'Failed migrating instances %s from %s'
+                    logging.error(
+                        error_msg,
+                        ', '.join(migrating_servers),
+                        hypervisor.service['host']
+                    )
+
+            time.sleep(60)
+
+    def evacuate_hypervisor(self, hypervisor):
+        """Evacuate VMs on hypervisor.
+
+        :param hypervisor: Nova hypervisor object
+        :type hypervisor: novaclient.v2.hypervisors.Hypervisor
+        :rtype: None
+        """
+        logging.error('Hypervisor %s is down', hypervisor.hypervisor_hostname)
+        logging.error(
+            'Evacuating %s VMs from %s',
+            len(hypervisor.servers),
+            hypervisor.service['host']
+        )
+
+        for server in hypervisor.servers:
+            logging.info(
+                'Evacuating server %s from host %s',
+                server['uuid'],
+                hypervisor.hypervisor_hostname
+            )
+
+            try:
+                self.nova.servers.evacuate(server['uuid'])
+            except Exception as exp:
+                error = 'Unable to evacuate server %s from ' + \
+                    'host %s.'
+                logging.error(
+                    error,
+                    server['uuid'],
+                    hypervisor.hypervisor_hostname
+                )
+                logging.error(str(exp))
+
+    def initialize_logging(self):
+        """Initialize logger."""
+        # Create parent log directories
+        if bool(self.logpath) and not os.path.exists(self.logpath):
+            os.makedirs(self.logpath)
+
+        # Create logger
+        logging.basicConfig(
+            filename=os.path.join(self.logpath, self.logfile),
+            format='%(asctime)s %(levelname)s:%(message)s',
+            level=logging.INFO)
+
+    def get_down_hypervisors(self):
+        """Retrieve list of downed hypervisors.
+
+        :returns: List of downed hypervisors
+        :rtype: list of novaclient.v2.hypervisors.Hypervisor objects
+        """
+        try:
+            h_list = self.nova.hypervisors.list()
+        except Exception as exp:
+            logging.error('Unable to retrieve hypervisor list from Nova.')
+            logging.error(str(exp))
+            return list()
+
+        down_hypervisors = [h for h in h_list if h.state != 'up']
+
+        return down_hypervisors
+
+    def get_hypervisor_migrations(self, hypervisor, after=None):
+        """
+        Return list of sever migration events from given hypervisor.
+
+        :param hypervisor: OpenStack Hypervisor name
+        :param after: Datetime to only select migrations created after
+            this date.
+        :type hypervisor: str
+        :type after: datetime.datetime
+        :returns: List of active migrations from hypervisor
+        :rtype: list of novaclient.v2.migrations.Migration objects
+        """
+        migrations_list = self.nova.migrations.list(hypervisor)
+
+        if after and isinstance(after, datetime.datetime):
+            # Remove old / completed migrations
+            migrations = []
+            for migration in migrations_list:
+                created_at = timeutils.parse_isotime(migration.created_at)
+                if created_at >= after:
+                    migrations.append(migration)
+
+            return migrations
+        else:
+            return migrations_list
+
+    def get_hypervisor_servers(self, hypervisor_id, hostname):
+        """
+        Return list of servers on hypervisor.
+
+        :param hypervisor_id: OpenStack Hypervisor ID
+        :param hostname: OpenStack Hypervisor hostname
+        :type hypervisor_id: int
+        :type hostname: str
+        :returns: Nova Hypervisor object
+        :rtype: novaclient.v2.hypervisors.Hypervisor or None
+        """
+        try:
+            result = self.nova.hypervisors.search(
+                hypervisor_match=hostname,
+                servers=True)
+        except novaclient.exceptions.NotFound as exp:
+            return None
+        except Exception as exp:
+            logging.error(exp)
+            return None
+
+        for server in result:
+            if server.id == hypervisor_id:
+                return server
+
+
+def main():
+    """Main entry point."""
+    watcher = Watcher(
+        properties_file='encryptedProperties.pkl',
+        logfile='pf9-watcher.log'
+    )
+    # Run service
+    watcher.run()
+
+
+if __name__ == '__main__':
+    main()
