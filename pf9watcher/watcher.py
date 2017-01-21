@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import argparse
 import ConfigParser
 import datetime
 import os
@@ -284,7 +285,19 @@ class Watcher(object):
 
 def main():
     """Main entry point."""
-    watcher = Watcher(config_file='watcher_config.ini')
+    # Parse CLI args
+    parser = argparse.ArgumentParser(description='Watcher CLI arguments.')
+    parser.add_argument(
+        '--config-file',
+        '-c',
+        dest='config_file',
+        default='/opt/pf9/etc/watcher_config.ini',
+        metavar='FILE',
+    )
+    args = parser.parse_args()
+
+    # Instantiate Watcher object
+    watcher = Watcher(config_file=args.config_file)
 
     # Run service
     watcher.run()
