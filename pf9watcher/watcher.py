@@ -1,14 +1,11 @@
 #!/usr/bin/env python
 
+import ConfigParser
 import datetime
 import os
 import time
 import logging
-import pickle
-import json
 
-# This is actually crypto.py that must be in the same directory as this script.
-import crypto
 from oslo_utils import timeutils
 from keystoneauth1.identity import v2
 from keystoneauth1 import session
@@ -24,12 +21,10 @@ class Watcher(object):
     nodes.
     """
 
-    def __init__(self, properties_file, logfile, logpath=''):
+    def __init__(self, config_file):
         """Construct a new 'Watcher' object."""
         super(Watcher, self).__init__()
 
-        self.logfile = logfile
-        self.logpath = logpath
         self.active_migration_states = frozenset([
             'accepted',
             'migrating',
@@ -44,7 +39,15 @@ class Watcher(object):
         ])
 
         try:
-            properties = self.read_properties(properties_file)
+            config = self.read_config(config_file)
+
+            self.logfile = config['watcher']['logfile']
+
+            if 'logdir' in config['watcher']:
+                self.logdir = config['watcher']['logdir']
+            else:
+                self.logdir = ''
+
         except IOError as exp:
             logging.error(exp)
             raise exp
@@ -54,10 +57,10 @@ class Watcher(object):
 
         try:
             auth = v2.Password(
-                auth_url=properties['identityApiEndpoint'],
-                username=properties['osUsername'],
-                password=properties['osPassword'],
-                tenant_name=properties['osTenant'])
+                auth_url=config['keystone']['endpoint'],
+                username=config['keystone']['username'],
+                password=config['keystone']['password'],
+                tenant_name=config['keystone']['project_id'])
             sess = session.Session(auth=auth)
         except Exception as exp:
             logging.error('Failure creating Keystone API client.')
@@ -68,38 +71,29 @@ class Watcher(object):
             self.nova = nclient.Client(
                 2,
                 session=sess,
-                region_name=properties['osRegion'])
+                region_name=config['keystone']['region'])
         except Exception as exp:
             logging.error('Failure creating Nova API client.')
             logging.error(str(exp))
 
     @staticmethod
-    def read_properties(properties_file):
-        """Read encrypted properties file.
+    def read_config(config_file):
+        """Read configuration file.
 
-        :param properties_file: Encrypted pickled file containing auth info
-        :type properties_file: str
-        :returns: Decrypted properties
+        :param config_file: Configuration file in INI format
+        :type config_file: str
+        :returns: Config file in hash format
         :rtype: dict
         """
-        if not os.path.isfile(properties_file):
+        if not os.path.isfile(config_file):
             raise Exception(
-                'Unable to read properties file %s' % properties_file
+                'Unable to read config file %s' % config_file
             )
 
-        # Open the file we stored the encrypted properties in
-        with open(properties_file, 'rb') as p_file:
-            # Retrieve Encrypted Properties
-            encrypted_properties = pickle.load(p_file)
+        config = ConfigParser.SafeConfigParser()
+        config.read(config_file)
 
-        # Decrypt the encrypted properties
-        decrypted_properties = crypto.crypt(
-            encrypted_properties['string'],
-            'decrypt',
-            encrypted_properties['secret'])
-
-        # Load the decrypted properties into session_info
-        return json.loads(decrypted_properties['string'])
+        return config._sections
 
     def run(self):
         """Run Watcher program."""
@@ -210,12 +204,12 @@ class Watcher(object):
     def initialize_logging(self):
         """Initialize logger."""
         # Create parent log directories
-        if bool(self.logpath) and not os.path.exists(self.logpath):
-            os.makedirs(self.logpath)
+        if bool(self.logdir) and not os.path.exists(self.logdir):
+            os.makedirs(self.logdir)
 
         # Create logger
         logging.basicConfig(
-            filename=os.path.join(self.logpath, self.logfile),
+            filename=os.path.join(self.logdir, self.logfile),
             format='%(asctime)s %(levelname)s:%(message)s',
             level=logging.INFO)
 
@@ -290,10 +284,8 @@ class Watcher(object):
 
 def main():
     """Main entry point."""
-    watcher = Watcher(
-        properties_file='encryptedProperties.pkl',
-        logfile='pf9-watcher.log'
-    )
+    watcher = Watcher(config_file='watcher_config.ini')
+
     # Run service
     watcher.run()
 
