@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(name='pf9watcher',
-      version='0.0.1',
+      version='0.0.2',
       description='Host monitoring and evacuation',
       url='http://github.com/platform9/pf9-watcher',
       author='Jeremy Brooks',
