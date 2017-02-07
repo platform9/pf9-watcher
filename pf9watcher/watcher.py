@@ -112,8 +112,7 @@ class Watcher(object):
                 )
 
                 # Skip processing if hypervisor is not running any servers
-                if not hasattr(hv_info, 'servers') or \
-                   not hasattr(hv_info, 'service'):
+                if not hasattr(hv_info, 'servers'):
                     continue
 
                 # Evacuate VMs from hypervisor
@@ -129,7 +128,7 @@ class Watcher(object):
                 while migrating_servers and retries <= max_retries:
 
                     migrations = self.get_hypervisor_migrations(
-                        hypervisor=hypervisor.service['host'],
+                        hypervisor=hypervisor.service['host'] or None,
                         after=evacuation_time
                     )
 
@@ -164,7 +163,7 @@ class Watcher(object):
                     logging.error(
                         error_msg,
                         ', '.join(migrating_servers),
-                        hypervisor.service['host']
+                        hypervisor.hypervisor_hostname
                     )
 
             time.sleep(60)
@@ -180,7 +179,7 @@ class Watcher(object):
         logging.error(
             'Evacuating %s VMs from %s',
             len(hypervisor.servers),
-            hypervisor.service['host']
+            hypervisor.hypervisor_hostname
         )
 
         for server in hypervisor.servers:
