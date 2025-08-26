@@ -2,7 +2,7 @@ name: Python Security scan
 'on':
   push:
     branches:
-      - main
+      - master
       - private/harsh/soc2-scan
   pull_request:
 
