@@ -2,7 +2,7 @@ name: Python Lint
 'on':
   push:
     branches:
-      - main
+      - master
       - private/harsh/soc2-scan
       - private/soc2
   pull_request:
