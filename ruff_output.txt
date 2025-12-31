@@ -1,0 +1,35 @@
+I001 [*] Import block is un-sorted or un-formatted
+  --> pf9watcher/watcher.py:3:1
+   |
+ 1 |   #!/usr/bin/env python
+ 2 |
+ 3 | / import argparse
+ 4 | | import ConfigParser
+ 5 | | import datetime
+ 6 | | import os
+ 7 | | import time
+ 8 | | import logging
+ 9 | |
+10 | | from oslo_utils import timeutils
+11 | | from keystoneauth1.identity import v2
+12 | | from keystoneauth1 import session
+13 | | import novaclient
+14 | | from novaclient import client as nclient
+   | |________________________________________^
+   |
+help: Organize imports
+
+F841 [*] Local variable `exp` is assigned to but never used
+   --> pf9watcher/watcher.py:274:50
+    |
+272 |                 hypervisor_match=hostname,
+273 |                 servers=True)
+274 |         except novaclient.exceptions.NotFound as exp:
+    |                                                  ^^^
+275 |             return None
+276 |         except Exception as exp:
+    |
+help: Remove assignment to unused variable `exp`
+
+Found 2 errors.
+[*] 2 fixable with the `--fix` option.
