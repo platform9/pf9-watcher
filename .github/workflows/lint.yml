@@ -1,0 +1,72 @@
+name: Python Lint
+'on':
+  push:
+    branches:
+      - main
+      - private/harsh/soc2-scan
+      - private/soc2
+  pull_request:
+
+jobs:
+  setup:
+    name: Shared Setup
+    runs-on: ubuntu-latest
+    outputs:
+      python-version: '3.10'
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+      - name: Export Python Version
+        run: echo "python-version=3.10" >> $GITHUB_OUTPUT
+        
+  ruff-lint-and-pr:
+    name: Ruff Lint & Auto PR
+    needs: setup
+    runs-on: ubuntu-latest
+    permissions:
+        contents: write
+        pull-requests: write
+
+    steps:
+        - name: Checkout code
+          uses: actions/checkout@v3
+
+        - name: Set up Python
+          uses: actions/setup-python@v4
+          with:
+            python-version: ${{ needs.setup.outputs.python-version }}
+
+        - name: Install Ruff
+          run: pip install ruff
+
+        - name: Run Ruff
+          id: ruff
+          run: |
+            echo "🔍 Running Ruff Lint..."
+            ruff check . --select E,F,I > ruff_output.txt || true
+            cat ruff_output.txt
+            if [ -s ruff_output.txt ]; then
+            echo "ruff_issues=true" >> "$GITHUB_OUTPUT"
+            else
+            echo "ruff_issues=false" >> "$GITHUB_OUTPUT"
+            fi
+
+        - name: Create PR if Issues Found
+          if: ${{ steps.ruff.outputs.ruff_issues == 'true' }}
+          uses: peter-evans/create-pull-request@v5
+          with:
+            commit-message: 'chore: fix ruff lint issues'
+            title: 'chore: Ruff Lint Issues Found'
+            body: |
+                ## ⚠️ Ruff Lint Issues Found
+                See `.ruff_output.txt` for full details.
+                branch: auto/ruff-lint-issues
+                base: atherton
+                add-paths: |
+                ruff_output.txt
+
+        - name: Fail job if issues found
+          if: ${{ steps.ruff.outputs.ruff_issues == 'true' }}
+          run: |
+            echo "❌ Ruff lint issues found — failing job."
+            exit 1
