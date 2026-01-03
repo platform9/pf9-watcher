@@ -1,0 +1,68 @@
+[
+  {
+    "cell": null,
+    "code": "I001",
+    "end_location": {
+      "column": 41,
+      "row": 14
+    },
+    "filename": "/home/runner/work/pf9-watcher/pf9-watcher/pf9watcher/watcher.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "import argparse\nimport datetime\nimport logging\nimport os\nimport time\n\nimport ConfigParser\nimport novaclient\nfrom keystoneauth1 import session\nfrom keystoneauth1.identity import v2\nfrom novaclient import client as nclient\nfrom oslo_utils import timeutils\n\n\n",
+          "end_location": {
+            "column": 1,
+            "row": 17
+          },
+          "location": {
+            "column": 1,
+            "row": 3
+          }
+        }
+      ],
+      "message": "Organize imports"
+    },
+    "location": {
+      "column": 1,
+      "row": 3
+    },
+    "message": "Import block is un-sorted or un-formatted",
+    "noqa_row": 3,
+    "url": "https://docs.astral.sh/ruff/rules/unsorted-imports"
+  },
+  {
+    "cell": null,
+    "code": "F841",
+    "end_location": {
+      "column": 53,
+      "row": 274
+    },
+    "filename": "/home/runner/work/pf9-watcher/pf9-watcher/pf9watcher/watcher.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 53,
+            "row": 274
+          },
+          "location": {
+            "column": 46,
+            "row": 274
+          }
+        }
+      ],
+      "message": "Remove assignment to unused variable `exp`"
+    },
+    "location": {
+      "column": 50,
+      "row": 274
+    },
+    "message": "Local variable `exp` is assigned to but never used",
+    "noqa_row": 274,
+    "url": "https://docs.astral.sh/ruff/rules/unused-variable"
+  }
+]
