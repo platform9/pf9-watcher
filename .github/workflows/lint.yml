@@ -1,0 +1,90 @@
+name: Python Lint
+'on':
+  push:
+    branches:
+      - main
+      - private/soc2
+  pull_request:
+
+jobs:
+  setup:
+    name: Shared Setup
+    runs-on: ubuntu-latest
+    outputs:
+      python-version: '3.10'
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+      - name: Export Python Version
+        run: echo "python-version=3.10" >> $GITHUB_OUTPUT
+        
+  ruff-lint-and-pr:
+    name: Ruff Lint & Auto PR
+    needs: setup
+    runs-on: ubuntu-latest
+    outputs:
+      ruff-issues-found: ${{ steps.scan.outputs.ruff_issues_found }}
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '${{ needs.setup.outputs.python-version }}'
+
+      - name: Install Ruff
+        run: pip install ruff
+
+      - name: Sanitize branch name
+        run: echo "SAFE_REF_NAME=${GITHUB_REF_NAME//\//-}" >> $GITHUB_ENV
+
+      - name: Run Ruff Lint Scan
+        id: scan
+        run: |
+          echo "Running Ruff lint scan..."
+          mkdir -p tmp
+          ruff check . --select E,F,I --output-format=json > tmp/ruff_output.json || true
+          echo -e "\nHuman-readable Ruff output:\n"
+          ruff check . --select E,F,I || true
+          cat tmp/ruff_output.json || echo "[]"
+          
+          issue_count=$(jq 'length' tmp/ruff_output.json || echo 0)
+          
+          if [[ "$issue_count" -gt 0 ]]; then
+            echo "ruff_issues_found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ruff_issues_found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload Ruff Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: ruff-json-${{ env.SAFE_REF_NAME }}
+          path: tmp/ruff_output.json
+
+      - name: Generate PR Body (if issues found)
+        if: ${{ steps.scan.outputs.ruff_issues_found == 'true' }}
+        run: |
+          echo "# Ruff Lint Report for branch \`${GITHUB_REF_NAME}\`" > tmp/pr-body.md
+          jq -r '.[] | "* File: \(.filename)\n  • Line: \(.location.row)\n  • Column: \(.location.column)\n  • Rule: \(.code)\n  • Message: \(.message)\n"' \
+            tmp/ruff_output.json >> tmp/pr-body.md
+
+      - name: Create Pull Request (if issues found)
+        if: ${{ github.event_name == 'push' && steps.scan.outputs.ruff_issues_found == 'true' }}
+        uses: peter-evans/create-pull-request@v5
+        with:
+          commit-message: 'chore: Ruff lint issues detected'
+          title: 'Ruff Lint Report for branch ${{ github.ref_name }}'
+          body-path: tmp/pr-body.md
+          branch: auto/ruff-lint/${{ env.SAFE_REF_NAME }}
+          base: ${{ github.ref_name }}
+          delete-branch: true
+
+      - name: Fail Job If Issues Found
+        if: ${{ steps.scan.outputs.ruff_issues_found == 'true' }}
+        run: exit 1
